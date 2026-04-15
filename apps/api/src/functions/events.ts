@@ -78,7 +78,7 @@ app.http('getEvent', {
     } catch (err: any) {
       if (err.code === 404) return { status: 404, jsonBody: { error: 'Event not found' } };
       context.error('getEvent error', err);
-      return { status: 500, jsonBody: { error: err.message || 'Internal error' } };
+      return { status: 500, jsonBody: { error: 'Internal error' } };
     }
   },
 });

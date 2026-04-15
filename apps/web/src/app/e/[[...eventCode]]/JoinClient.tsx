@@ -1,6 +1,6 @@
 'use client';
 
-import { useParams, useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
   Title1,
@@ -54,10 +54,9 @@ const useStyles = makeStyles({
 
 export default function JoinClient() {
   const styles = useStyles();
-  const params = useParams();
+  const pathname = usePathname();
   const router = useRouter();
-  const slugArray = params.eventCode as string[] | undefined;
-  const eventCode = (slugArray?.[0] || '').toUpperCase();
+  const eventCode = (pathname.split('/').filter(Boolean)[1] || '').toUpperCase();
 
   const [event, setEvent] = useState<any>(null);
   const [loading, setLoading] = useState(true);

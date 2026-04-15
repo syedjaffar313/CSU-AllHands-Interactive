@@ -1,6 +1,6 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Title2,
@@ -81,9 +81,8 @@ const useStyles = makeStyles({
 
 export default function LiveClient() {
   const styles = useStyles();
-  const params = useParams();
-  const slugArray = params.eventCode as string[] | undefined;
-  const eventCode = (slugArray?.[0] || '').toUpperCase();
+  const pathname = usePathname();
+  const eventCode = (pathname.split('/').filter(Boolean)[1] || '').toUpperCase();
 
   const [question, setQuestion] = useState<QuestionDoc | null>(null);
   const [submitted, setSubmitted] = useState(false);

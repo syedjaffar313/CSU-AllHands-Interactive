@@ -1,6 +1,6 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
 import {
   Title3,
@@ -154,9 +154,8 @@ const useStyles = makeStyles({
 
 export default function DisplayClient() {
   const styles = useStyles();
-  const params = useParams();
-  const slugArray = params.eventCode as string[] | undefined;
-  const eventCode = (slugArray?.[0] || '').toUpperCase();
+  const pathname = usePathname();
+  const eventCode = (pathname.split('/').filter(Boolean)[1] || '').toUpperCase();
 
   const [question, setQuestion] = useState<QuestionDoc | null>(null);
   const [wordcloud, setWordcloud] = useState<WordCloudTally | null>(null);

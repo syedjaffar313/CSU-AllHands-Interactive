@@ -2,6 +2,7 @@
   "name": "@event-companion/api",
   "version": "1.0.0",
   "private": true,
+  "main": "dist/src/functions/*.js",
   "scripts": {
     "build": "tsc",
     "start": "func start",
@@ -10,14 +11,13 @@
   },
   "dependencies": {
     "@azure/cosmos": "4.2.0",
+    "@azure/functions": "4.6.0",
     "@azure/identity": "4.5.0",
     "@azure/keyvault-secrets": "4.9.0",
     "applicationinsights": "3.4.0",
     "uuid": "11.1.0"
   },
   "devDependencies": {
-    "@azure/functions": "4.6.0",
-    "@types/node": "20.17.12",
     "@types/uuid": "10.0.0",
     "typescript": "5.7.3",
     "eslint": "9.18.0",

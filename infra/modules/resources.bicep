@@ -8,7 +8,7 @@ param tenantId string = ''
 var uniqueSuffix = uniqueString(resourceGroup().id, baseName)
 var cosmosName = '${baseName}-cosmos-${uniqueSuffix}'
 var signalRName = '${baseName}-signalr-${uniqueSuffix}'
-var kvName = 'kv-${baseName}-${uniqueSuffix}'
+var kvName = 'kv-ec-${uniqueSuffix}'
 var logName = '${baseName}-logs-${env}'
 var aiName = '${baseName}-ai-${env}'
 var swaName = '${baseName}-swa-${env}'
@@ -47,7 +47,7 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
     databaseAccountOfferType: 'Standard'
     consistencyPolicy: { defaultConsistencyLevel: 'Session' }
     locations: [
-      { locationName: location, failoverPriority: 0, isZoneRedundant: true }
+      { locationName: location, failoverPriority: 0, isZoneRedundant: false }
     ]
     disableLocalAuth: false
     enableAutomaticFailover: true

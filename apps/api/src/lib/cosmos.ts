@@ -1,4 +1,5 @@
 import { CosmosClient, Container, Database } from '@azure/cosmos';
+import { DefaultAzureCredential } from '@azure/identity';
 
 let client: CosmosClient | null = null;
 let database: Database | null = null;
@@ -10,12 +11,11 @@ function getClient(): CosmosClient {
     const endpoint = process.env.COSMOS_ENDPOINT;
     const key = process.env.COSMOS_KEY;
     if (!endpoint) throw new Error('COSMOS_ENDPOINT not set');
-    // Prefer Managed Identity in production; key for local dev
     if (key) {
+      // Key-based auth for local dev (if local auth is enabled)
       client = new CosmosClient({ endpoint, key });
     } else {
-      // Use DefaultAzureCredential (Managed Identity) via @azure/identity
-      const { DefaultAzureCredential } = require('@azure/identity');
+      // Entra ID (Managed Identity) for production
       client = new CosmosClient({ endpoint, aadCredentials: new DefaultAzureCredential() });
     }
   }

@@ -2,20 +2,29 @@
   "routes": [
     {
       "route": "/control/*",
-      "allowedRoles": ["authenticated"]
+      "allowedRoles": ["anonymous", "authenticated"],
+      "rewrite": "/control/index.html"
+    },
+    {
+      "route": "/display/*",
+      "rewrite": "/display/index.html"
+    },
+    {
+      "route": "/live/*",
+      "rewrite": "/live/index.html"
+    },
+    {
+      "route": "/e/*",
+      "rewrite": "/e/index.html"
     },
     {
       "route": "/api/*",
-      "allowedRoles": ["anonymous", "authenticated"]
-    },
-    {
-      "route": "/*",
       "allowedRoles": ["anonymous", "authenticated"]
     }
   ],
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/api/*", "/_next/*", "/images/*", "*.{css,js,svg,png,ico,json}"]
+    "exclude": ["/api/*", "/_next/*", "/images/*", "*.{css,js,svg,png,ico,json,txt}"]
   },
   "responseOverrides": {
     "401": {

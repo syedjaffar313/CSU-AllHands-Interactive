@@ -3,53 +3,123 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
-  Title1,
-  Title3,
-  Body1,
   Button,
   Spinner,
   makeStyles,
-  tokens,
 } from '@fluentui/react-components';
+import { ArrowRightFilled, ShareFilled } from '@fluentui/react-icons';
 import { QRCodeSVG } from 'qrcode.react';
 import { api } from '@/lib/api';
 
 const useStyles = makeStyles({
-  container: {
+  scene: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: '100vh',
-    padding: tokens.spacingVerticalXXL,
-    gap: tokens.spacingVerticalL,
-    background: `linear-gradient(135deg, ${tokens.colorBrandBackground} 0%, ${tokens.colorBrandBackgroundPressed} 100%)`,
+    padding: '24px',
+    position: 'relative' as const,
+    overflow: 'hidden',
+    background: 'radial-gradient(ellipse 120% 80% at 50% 0%, #e8f4fd 0%, #f6f9fc 40%, #ffffff 100%)',
   },
-  card: {
-    background: tokens.colorNeutralBackground1,
-    borderRadius: tokens.borderRadiusXLarge,
-    padding: tokens.spacingVerticalXXL,
-    maxWidth: '420px',
-    width: '100%',
+  orb: {
+    position: 'absolute' as const,
+    width: '500px',
+    height: '500px',
+    borderRadius: '50%',
+    background: 'radial-gradient(circle, rgba(0,120,212,0.06) 0%, transparent 70%)',
+    top: '-200px',
+    left: '50%',
+    transform: 'translateX(-50%)',
+    pointerEvents: 'none' as const,
+  },
+  content: {
+    position: 'relative' as const,
+    zIndex: 1,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: tokens.spacingVerticalM,
-    boxShadow: tokens.shadow28,
+    gap: '28px',
+    maxWidth: '420px',
+    width: '100%',
   },
-  qr: {
-    padding: tokens.spacingVerticalM,
-    background: '#fff',
-    borderRadius: tokens.borderRadiusLarge,
+  eventName: {
+    fontSize: 'clamp(1.5rem, 4vw, 2.2rem)',
+    fontWeight: '800' as unknown as number,
+    textAlign: 'center' as const,
+    lineHeight: '1.15',
+    letterSpacing: '-0.02em',
+    color: '#1a1a1a',
   },
-  url: {
-    fontSize: tokens.fontSizeBase400,
-    fontWeight: tokens.fontWeightSemibold,
-    color: tokens.colorBrandForeground1,
+  subtitle: {
+    fontSize: '16px',
+    color: '#888',
+    textAlign: 'center' as const,
+    lineHeight: '1.5',
+  },
+  qrCard: {
+    background: '#ffffff',
+    borderRadius: '24px',
+    padding: '32px',
+    border: '1px solid rgba(0, 0, 0, 0.06)',
+    boxShadow: '0 12px 48px rgba(0, 0, 0, 0.06), 0 2px 6px rgba(0, 0, 0, 0.02)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '20px',
+  },
+  qrWrapper: {
+    padding: '16px',
+    background: '#fafafa',
+    borderRadius: '16px',
+    border: '1px solid rgba(0, 0, 0, 0.04)',
+  },
+  urlPill: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '8px 16px',
+    borderRadius: '100px',
+    background: 'rgba(0, 120, 212, 0.06)',
+    color: '#0078d4',
+    fontSize: '13px',
+    fontWeight: '600' as unknown as number,
     wordBreak: 'break-all' as const,
     textAlign: 'center' as const,
+    maxWidth: '100%',
   },
-  title: { textAlign: 'center' as const },
+  actions: {
+    display: 'flex',
+    gap: '12px',
+    width: '100%',
+  },
+  errorCard: {
+    background: '#ffffff',
+    borderRadius: '24px',
+    padding: '48px 32px',
+    border: '1px solid rgba(0, 0, 0, 0.06)',
+    boxShadow: '0 12px 48px rgba(0, 0, 0, 0.06)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '16px',
+    textAlign: 'center' as const,
+  },
+  errorIcon: {
+    fontSize: '48px',
+    lineHeight: '1',
+  },
+  errorTitle: {
+    fontSize: '22px',
+    fontWeight: '700' as unknown as number,
+    color: '#1a1a1a',
+  },
+  errorBody: {
+    fontSize: '15px',
+    color: '#888',
+    lineHeight: '1.5',
+  },
 });
 
 export default function JoinClient() {
@@ -73,42 +143,86 @@ export default function JoinClient() {
     ? `${window.location.origin}/live/${eventCode}/`
     : `/live/${eventCode}/`;
 
+  const shortUrl = typeof window !== 'undefined'
+    ? `${window.location.host}/live/${eventCode}`
+    : `/live/${eventCode}`;
+
   if (loading) {
     return (
-      <div className={styles.container}>
-        <Spinner size="large" label="Loading event..." />
+      <div className={styles.scene}>
+        <Spinner size="large" />
       </div>
     );
   }
 
   if (error || !eventCode) {
     return (
-      <div className={styles.container}>
-        <div className={styles.card}>
-          <Title3>Event Not Found</Title3>
-          <Body1>Could not find event &ldquo;{eventCode}&rdquo;. Check the code and try again.</Body1>
-          <Button appearance="primary" onClick={() => router.push('/')}>Go Home</Button>
+      <div className={styles.scene}>
+        <div className={styles.orb} />
+        <div className={styles.errorCard}>
+          <div className={styles.errorIcon}>🔍</div>
+          <div className={styles.errorTitle}>Event not found</div>
+          <div className={styles.errorBody}>
+            We couldn&apos;t find an event with code &ldquo;{eventCode}&rdquo;.
+            <br />Double-check the code and try again.
+          </div>
+          <Button
+            appearance="primary"
+            onClick={() => router.push('/')}
+            style={{ borderRadius: '12px', marginTop: '8px' }}
+          >
+            Back to Home
+          </Button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={styles.container}>
-      <div className={styles.card}>
-        <Title1 className={styles.title}>{event?.title || 'Event'}</Title1>
-        <Body1>Scan the QR code or visit the link below to participate.</Body1>
-        <div className={styles.qr}>
-          <QRCodeSVG value={liveUrl} size={200} level="M" />
+    <div className={styles.scene}>
+      <div className={styles.orb} />
+
+      <div className={styles.content}>
+        <h1 className={styles.eventName}>{event?.title || 'Event'}</h1>
+        <p className={styles.subtitle}>
+          Scan the QR code to join on your phone,
+          or tap the button below.
+        </p>
+
+        <div className={styles.qrCard}>
+          <div className={styles.qrWrapper}>
+            <QRCodeSVG
+              value={liveUrl}
+              size={180}
+              level="M"
+              bgColor="transparent"
+              fgColor="#1a1a1a"
+            />
+          </div>
+          <div className={styles.urlPill}>
+            <ShareFilled fontSize={14} />
+            {shortUrl}
+          </div>
         </div>
-        <div className={styles.url}>{liveUrl}</div>
-        <Button
-          appearance="primary"
-          size="large"
-          onClick={() => router.push(`/live/${eventCode}/`)}
-        >
-          Join Now
-        </Button>
+
+        <div className={styles.actions}>
+          <Button
+            appearance="primary"
+            size="large"
+            onClick={() => router.push(`/live/${eventCode}/`)}
+            icon={<ArrowRightFilled />}
+            iconPosition="after"
+            style={{
+              borderRadius: '14px',
+              height: '52px',
+              fontSize: '16px',
+              fontWeight: 600,
+              flex: 1,
+            }}
+          >
+            Join Now
+          </Button>
+        </div>
       </div>
     </div>
   );

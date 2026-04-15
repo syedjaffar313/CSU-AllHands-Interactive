@@ -3,11 +3,7 @@
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
 import {
-  Title3,
-  Body1,
-  Badge,
   makeStyles,
-  tokens,
 } from '@fluentui/react-components';
 import { motion, AnimatePresence } from 'framer-motion';
 import { connectSignalR, disconnectSignalR, getConnectionStatus } from '@/lib/signalr';
@@ -21,134 +17,208 @@ import type {
 } from '@/types';
 
 const useStyles = makeStyles({
-  container: {
+  scene: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: '100vh',
-    background: 'linear-gradient(135deg, #0f1b2d 0%, #1a365d 50%, #0f1b2d 100%)',
+    background: 'radial-gradient(ellipse 140% 100% at 50% 10%, #0d1f3c 0%, #080e1a 60%, #040810 100%)',
     color: '#ffffff',
     overflow: 'hidden',
     position: 'relative' as const,
+    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
   },
-  header: {
+  grid: {
     position: 'absolute' as const,
-    top: tokens.spacingVerticalL,
-    left: tokens.spacingHorizontalXL,
-    right: tokens.spacingHorizontalXL,
+    inset: '0',
+    backgroundImage:
+      'linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)',
+    backgroundSize: '80px 80px',
+    pointerEvents: 'none' as const,
+  },
+  topBar: {
+    position: 'absolute' as const,
+    top: '28px',
+    left: '40px',
+    right: '40px',
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
     zIndex: 10,
   },
+  eventTag: {
+    fontSize: '12px',
+    fontWeight: '700' as unknown as number,
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase' as const,
+    color: 'rgba(255,255,255,0.3)',
+  },
+  statusDot: {
+    width: '10px',
+    height: '10px',
+    borderRadius: '50%',
+  },
   prompt: {
-    fontSize: '2.5rem',
-    fontWeight: tokens.fontWeightBold,
+    fontSize: 'clamp(2rem, 4vw, 3.2rem)',
+    fontWeight: '800' as unknown as number,
     color: '#ffffff',
     textAlign: 'center' as const,
-    marginBottom: tokens.spacingVerticalXXL,
+    marginBottom: '48px',
     maxWidth: '80%',
+    lineHeight: '1.15',
+    letterSpacing: '-0.02em',
+    position: 'relative' as const,
+    zIndex: 2,
   },
   waiting: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: tokens.spacingVerticalXL,
+    gap: '20px',
+    position: 'relative' as const,
+    zIndex: 2,
   },
-  waitingTitle: {
-    fontSize: '3rem',
-    fontWeight: tokens.fontWeightBold,
-    color: 'rgba(255,255,255,0.9)',
+  waitTitle: {
+    fontSize: 'clamp(2.5rem, 5vw, 4rem)',
+    fontWeight: '800' as unknown as number,
+    letterSpacing: '-0.03em',
+    background: 'linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.5) 100%)',
+    WebkitBackgroundClip: 'text',
+    WebkitTextFillColor: 'transparent',
+  },
+  waitSub: {
+    fontSize: '1.2rem',
+    color: 'rgba(255,255,255,0.35)',
+    fontWeight: '400' as unknown as number,
   },
   wordCloudContainer: {
     display: 'flex',
     flexWrap: 'wrap' as const,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: '12px',
-    maxWidth: '90vw',
-    maxHeight: '70vh',
-    padding: tokens.spacingVerticalXL,
+    gap: '14px',
+    maxWidth: '88vw',
+    maxHeight: '65vh',
+    padding: '32px',
+    position: 'relative' as const,
+    zIndex: 2,
   },
   pollContainer: {
     width: '80vw',
-    maxWidth: '900px',
+    maxWidth: '860px',
     display: 'flex',
     flexDirection: 'column',
-    gap: tokens.spacingVerticalL,
+    gap: '16px',
+    position: 'relative' as const,
+    zIndex: 2,
   },
-  pollBar: {
+  pollRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: tokens.spacingHorizontalL,
+    gap: '20px',
   },
   pollLabel: {
-    minWidth: '200px',
-    fontSize: '1.5rem',
-    fontWeight: tokens.fontWeightSemibold,
-    color: '#ffffff',
+    minWidth: '180px',
+    fontSize: '1.3rem',
+    fontWeight: '600' as unknown as number,
+    color: 'rgba(255,255,255,0.9)',
     textAlign: 'right' as const,
   },
-  pollBarOuter: {
+  pollTrack: {
     flex: 1,
-    height: '48px',
-    background: 'rgba(255,255,255,0.1)',
-    borderRadius: '24px',
+    height: '44px',
+    background: 'rgba(255,255,255,0.06)',
+    borderRadius: '22px',
     overflow: 'hidden',
     position: 'relative' as const,
   },
-  pollBarInner: {
+  pollFill: {
     height: '100%',
-    borderRadius: '24px',
+    borderRadius: '22px',
     background: 'linear-gradient(90deg, #0078d4, #50e6ff)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    paddingRight: '16px',
-    minWidth: '48px',
+    paddingRight: '14px',
+    minWidth: '44px',
   },
   pollCount: {
-    fontSize: '1.2rem',
-    fontWeight: tokens.fontWeightBold,
-    color: '#ffffff',
-    minWidth: '80px',
+    fontSize: '1.1rem',
+    fontWeight: '700' as unknown as number,
+    color: 'rgba(255,255,255,0.5)',
+    minWidth: '90px',
     textAlign: 'left' as const,
+  },
+  pollTotal: {
+    textAlign: 'center' as const,
+    color: 'rgba(255,255,255,0.3)',
+    fontSize: '1rem',
+    marginTop: '12px',
   },
   quizContainer: {
     width: '80vw',
-    maxWidth: '900px',
+    maxWidth: '860px',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: tokens.spacingVerticalL,
+    gap: '14px',
+    position: 'relative' as const,
+    zIndex: 2,
+  },
+  quizOption: {
+    width: '100%',
+    padding: '18px 28px',
+    borderRadius: '16px',
+    fontSize: '1.35rem',
+    fontWeight: '500' as unknown as number,
+    display: 'flex',
+    alignItems: 'center',
+    gap: '16px',
+    border: '1.5px solid rgba(255,255,255,0.06)',
+    background: 'rgba(255,255,255,0.04)',
+  },
+  quizOptionCorrect: {
+    background: 'rgba(16,185,129,0.15)',
+    border: '1.5px solid rgba(16,185,129,0.5)',
+  },
+  quizIndex: {
+    fontWeight: '700' as unknown as number,
+    color: '#50e6ff',
+    fontSize: '1.1rem',
+    minWidth: '28px',
   },
   leaderboard: {
     display: 'flex',
     flexDirection: 'column',
-    gap: tokens.spacingVerticalM,
+    gap: '12px',
     width: '100%',
-    maxWidth: '600px',
+    maxWidth: '560px',
+    marginTop: '20px',
   },
-  leaderboardRow: {
+  leaderRow: {
     display: 'flex',
     alignItems: 'center',
-    gap: tokens.spacingHorizontalL,
-    padding: tokens.spacingVerticalM,
-    background: 'rgba(255,255,255,0.08)',
-    borderRadius: tokens.borderRadiusLarge,
+    gap: '16px',
+    padding: '14px 20px',
+    background: 'rgba(255,255,255,0.04)',
+    borderRadius: '14px',
+    border: '1px solid rgba(255,255,255,0.06)',
   },
   rank: {
-    fontSize: '2rem',
-    fontWeight: tokens.fontWeightBold,
-    width: '50px',
+    fontSize: '1.8rem',
+    fontWeight: '800' as unknown as number,
+    width: '48px',
     textAlign: 'center' as const,
+    background: 'linear-gradient(135deg, #50e6ff, #0078d4)',
+    WebkitBackgroundClip: 'text',
+    WebkitTextFillColor: 'transparent',
   },
-  statusIndicator: {
-    width: '12px',
-    height: '12px',
-    borderRadius: '50%',
-    display: 'inline-block',
+  emptyHint: {
+    fontSize: '1.3rem',
+    color: 'rgba(255,255,255,0.3)',
+    position: 'relative' as const,
+    zIndex: 2,
   },
 });
 
@@ -203,16 +273,18 @@ export default function DisplayClient() {
     : 1;
 
   return (
-    <div className={styles.container}>
-      <div className={styles.header}>
-        <Badge appearance="outline" color="informative" style={{ color: '#fff', borderColor: 'rgba(255,255,255,0.3)' }}>
-          {eventCode}
-        </Badge>
-        <div
-          className={styles.statusIndicator}
+    <div className={styles.scene}>
+      <div className={styles.grid} />
+
+      <div className={styles.topBar}>
+        <span className={styles.eventTag}>{eventCode}</span>
+        <span
+          className={styles.statusDot}
           style={{
             backgroundColor:
-              connStatus === 'connected' ? '#6ccb5f' : connStatus === 'polling' ? '#ffaa44' : '#888',
+              connStatus === 'connected' ? '#10b981' : connStatus === 'polling' ? '#f59e0b' : '#555',
+            boxShadow:
+              connStatus === 'connected' ? '0 0 8px rgba(16,185,129,0.5)' : 'none',
           }}
         />
       </div>
@@ -221,14 +293,12 @@ export default function DisplayClient() {
         <AnimatePresence>
           <motion.div
             className={styles.waiting}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
           >
-            <div className={styles.waitingTitle}>CSU All Hands</div>
-            <Body1 style={{ fontSize: '1.5rem', color: 'rgba(255,255,255,0.6)' }}>
-              Waiting for the next activity...
-            </Body1>
+            <div className={styles.waitTitle}>CSU All Hands</div>
+            <div className={styles.waitSub}>Waiting for the next activity&hellip;</div>
           </motion.div>
         </AnimatePresence>
       )}
@@ -241,6 +311,7 @@ export default function DisplayClient() {
         >
           <div className={styles.prompt}>{question.prompt}</div>
 
+          {/* Word cloud */}
           {question.type === 'wordcloud' && wordcloud && (
             <div className={styles.wordCloudContainer}>
               <AnimatePresence>
@@ -253,8 +324,8 @@ export default function DisplayClient() {
                     style={{
                       fontSize: `${getWordFontSize(w.count, maxWordCount)}px`,
                       fontWeight: w.count > maxWordCount * 0.5 ? 700 : 400,
-                      color: `hsl(${200 + (w.count * 30) % 60}, 80%, ${60 + (w.count * 5) % 30}%)`,
-                      padding: '4px 8px',
+                      color: `hsl(${200 + (w.count * 30) % 60}, 70%, ${55 + (w.count * 5) % 30}%)`,
+                      padding: '4px 10px',
                       display: 'inline-block',
                       lineHeight: 1.2,
                     }}
@@ -265,23 +336,21 @@ export default function DisplayClient() {
               </AnimatePresence>
             </div>
           )}
-
           {question.type === 'wordcloud' && !wordcloud && (
-            <Body1 style={{ fontSize: '1.5rem', color: 'rgba(255,255,255,0.5)' }}>
-              Waiting for submissions...
-            </Body1>
+            <div className={styles.emptyHint}>Waiting for submissions&hellip;</div>
           )}
 
+          {/* Poll bars */}
           {question.type === 'poll' && poll && (
             <div className={styles.pollContainer}>
               {poll.options.map((opt: { label: string; count: number; percent: number }, i: number) => (
-                <div key={i} className={styles.pollBar}>
+                <div key={i} className={styles.pollRow}>
                   <div className={styles.pollLabel}>{opt.label}</div>
-                  <div className={styles.pollBarOuter}>
+                  <div className={styles.pollTrack}>
                     <motion.div
-                      className={styles.pollBarInner}
+                      className={styles.pollFill}
                       initial={{ width: '0%' }}
-                      animate={{ width: `${Math.max(opt.percent, 5)}%` }}
+                      animate={{ width: `${Math.max(opt.percent, 4)}%` }}
                       transition={{ type: 'spring', damping: 20, stiffness: 100 }}
                     />
                   </div>
@@ -290,18 +359,16 @@ export default function DisplayClient() {
                   </div>
                 </div>
               ))}
-              <Body1 style={{ textAlign: 'center', color: 'rgba(255,255,255,0.5)', marginTop: 16 }}>
+              <div className={styles.pollTotal}>
                 {poll.totalVotes} vote{poll.totalVotes !== 1 ? 's' : ''}
-              </Body1>
+              </div>
             </div>
           )}
-
           {question.type === 'poll' && !poll && (
-            <Body1 style={{ fontSize: '1.5rem', color: 'rgba(255,255,255,0.5)' }}>
-              Collecting votes...
-            </Body1>
+            <div className={styles.emptyHint}>Collecting votes&hellip;</div>
           )}
 
+          {/* Quiz */}
           {question.type === 'quiz' && (
             <div className={styles.quizContainer}>
               {question.options?.map((opt: string, i: number) => {
@@ -312,27 +379,15 @@ export default function DisplayClient() {
                     key={i}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.1 }}
-                    style={{
-                      width: '100%',
-                      padding: '16px 24px',
-                      background: isRevealed && isCorrect
-                        ? 'rgba(108, 203, 95, 0.3)'
-                        : 'rgba(255,255,255,0.08)',
-                      borderRadius: '12px',
-                      fontSize: '1.5rem',
-                      border: isRevealed && isCorrect ? '2px solid #6ccb5f' : '2px solid transparent',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '16px',
-                    }}
+                    transition={{ delay: i * 0.08 }}
+                    className={`${styles.quizOption} ${isRevealed && isCorrect ? styles.quizOptionCorrect : ''}`}
                   >
-                    <span style={{ fontWeight: 700, color: '#50e6ff' }}>
+                    <span className={styles.quizIndex}>
                       {String.fromCharCode(65 + i)}.
                     </span>
                     {opt}
                     {isRevealed && isCorrect && (
-                      <span style={{ marginLeft: 'auto', color: '#6ccb5f' }}>&#10003;</span>
+                      <span style={{ marginLeft: 'auto', color: '#10b981', fontWeight: 700 }}>✓</span>
                     )}
                   </motion.div>
                 );
@@ -342,11 +397,9 @@ export default function DisplayClient() {
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  style={{ textAlign: 'center', marginTop: 16 }}
+                  style={{ textAlign: 'center', marginTop: '16px', color: 'rgba(255,255,255,0.45)', fontSize: '1.1rem' }}
                 >
-                  <Body1 style={{ fontSize: '1.2rem', color: 'rgba(255,255,255,0.7)' }}>
-                    {quiz.stats.totalAnswered} answered &middot; {quiz.stats.percentCorrect}% correct
-                  </Body1>
+                  {quiz.stats.totalAnswered} answered &middot; {quiz.stats.percentCorrect}% correct
                 </motion.div>
               )}
 
@@ -357,16 +410,16 @@ export default function DisplayClient() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.3 }}
                 >
-                  <Title3 style={{ textAlign: 'center', color: '#50e6ff', marginBottom: 8 }}>
+                  <div style={{ textAlign: 'center', color: '#50e6ff', fontSize: '1.3rem', fontWeight: 700, marginBottom: '4px', letterSpacing: '-0.01em' }}>
                     Top 3
-                  </Title3>
+                  </div>
                   {quiz.leaderboard.map((entry: { rank: number; nickname: string; score: number }) => (
-                    <div key={entry.rank} className={styles.leaderboardRow}>
+                    <div key={entry.rank} className={styles.leaderRow}>
                       <div className={styles.rank}>
                         {entry.rank === 1 ? '1st' : entry.rank === 2 ? '2nd' : '3rd'}
                       </div>
-                      <div style={{ flex: 1, fontSize: '1.3rem' }}>{entry.nickname}</div>
-                      <div style={{ fontSize: '1.3rem', fontWeight: 700, color: '#50e6ff' }}>
+                      <div style={{ flex: 1, fontSize: '1.2rem', fontWeight: 500 }}>{entry.nickname}</div>
+                      <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#50e6ff' }}>
                         {entry.score} pts
                       </div>
                     </div>

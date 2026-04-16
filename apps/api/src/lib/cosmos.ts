@@ -1,5 +1,5 @@
 import { CosmosClient, Container, Database } from '@azure/cosmos';
-import { DefaultAzureCredential, ManagedIdentityCredential } from '@azure/identity';
+import { ChainedTokenCredential, ManagedIdentityCredential, EnvironmentCredential, DefaultAzureCredential } from '@azure/identity';
 
 let client: CosmosClient | null = null;
 let database: Database | null = null;
@@ -15,11 +15,13 @@ function getClient(): CosmosClient {
       // Key-based auth for local dev (if local auth is enabled)
       client = new CosmosClient({ endpoint, key });
     } else {
-      // In production: use Managed Identity (no secrets, never expires).
-      // Falls back to DefaultAzureCredential for local dev with az login.
-      const credential = process.env.WEBSITE_HOSTNAME
-        ? new ManagedIdentityCredential()
-        : new DefaultAzureCredential();
+      // Production: try Managed Identity first (never expires),
+      // then EnvironmentCredential (SP, valid 1yr), then DefaultAzureCredential.
+      const credential = new ChainedTokenCredential(
+        new ManagedIdentityCredential(),
+        new EnvironmentCredential(),
+        new DefaultAzureCredential(),
+      );
       client = new CosmosClient({ endpoint, aadCredentials: credential });
     }
   }

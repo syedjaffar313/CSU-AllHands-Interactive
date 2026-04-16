@@ -54,7 +54,7 @@ app.http('createEvent', {
       return { status: 201, jsonBody: doc };
     } catch (err: any) {
       context.error('createEvent error', err);
-      return { status: 500, jsonBody: { error: 'Internal error' } };
+      return { status: 500, jsonBody: { error: 'Internal error', detail: err?.message || String(err) } };
     }
   },
 });
@@ -78,7 +78,7 @@ app.http('getEvent', {
     } catch (err: any) {
       if (err.code === 404) return { status: 404, jsonBody: { error: 'Event not found' } };
       context.error('getEvent error', err);
-      return { status: 500, jsonBody: { error: 'Internal error' } };
+      return { status: 500, jsonBody: { error: 'Internal error', detail: err?.message || String(err) } };
     }
   },
 });

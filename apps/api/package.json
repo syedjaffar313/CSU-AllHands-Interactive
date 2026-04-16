@@ -2,7 +2,7 @@
   "name": "@event-companion/api",
   "version": "1.0.0",
   "private": true,
-  "main": "dist/apps/api/src/functions/*.js",
+  "main": "dist/apps/api/src/index.js",
   "scripts": {
     "build": "tsc",
     "start": "func start",

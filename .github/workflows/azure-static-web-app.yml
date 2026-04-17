@@ -71,14 +71,13 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Pre-build API (with devDependencies)
+      - name: Build API
         working-directory: apps/api
         run: |
           npm ci
           npm run build
-          npm ci --omit=dev
 
-      - name: Build and Deploy to SWA
+      - name: Deploy to SWA (frontend + managed API)
         id: swa
         uses: Azure/static-web-apps-deploy@v1
         with:
@@ -88,7 +87,6 @@ jobs:
           app_location: 'apps/web'
           api_location: 'apps/api'
           output_location: 'out'
-          api_build_command: 'echo API pre-built'
 
   close-pull-request:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'

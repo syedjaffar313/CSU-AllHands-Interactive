@@ -1,13 +1,40 @@
 import { TableClient, TableServiceClient } from '@azure/data-tables';
-import { ManagedIdentityCredential } from '@azure/identity';
+import type { TokenCredential, AccessToken, GetTokenOptions } from '@azure/core-auth';
 
 let serviceClient: TableServiceClient | null = null;
 const tableClients = new Map<string, TableClient>();
-let credential: ManagedIdentityCredential | null = null;
+let credential: TokenCredential | null = null;
 
-function getManagedIdentityCredential(): ManagedIdentityCredential {
+/**
+ * Custom TokenCredential that calls the SWA/App Service MSI endpoint directly.
+ * Works around @azure/identity ManagedIdentityCredential bugs in SWA managed functions.
+ */
+class SwaIdentityCredential implements TokenCredential {
+  async getToken(scopes: string | string[], _options?: GetTokenOptions): Promise<AccessToken> {
+    const resource = (Array.isArray(scopes) ? scopes[0] : scopes).replace(/\/.default$/, '');
+    const endpoint = process.env.IDENTITY_ENDPOINT;
+    const header = process.env.IDENTITY_HEADER;
+    if (!endpoint || !header) {
+      throw new Error('IDENTITY_ENDPOINT or IDENTITY_HEADER not set – managed identity unavailable');
+    }
+    const url = `${endpoint}?resource=${encodeURIComponent(resource)}&api-version=2019-08-01`;
+    const resp = await fetch(url, { headers: { 'X-IDENTITY-HEADER': header } });
+    if (!resp.ok) {
+      const body = await resp.text();
+      throw new Error(`MSI token request failed (${resp.status}): ${body}`);
+    }
+    const json = await resp.json() as { access_token: string; expires_on: string };
+    // expires_on can be a Unix timestamp string or an ISO date
+    const expiresOn = /^\d+$/.test(json.expires_on)
+      ? parseInt(json.expires_on, 10) * 1000
+      : new Date(json.expires_on).getTime();
+    return { token: json.access_token, expiresOnTimestamp: expiresOn };
+  }
+}
+
+function getCredential(): TokenCredential {
   if (!credential) {
-    credential = new ManagedIdentityCredential();
+    credential = new SwaIdentityCredential();
   }
   return credential;
 }
@@ -31,7 +58,7 @@ function getServiceClient(): TableServiceClient {
     if (isLocalDev()) {
       serviceClient = TableServiceClient.fromConnectionString(getConnectionString());
     } else {
-      serviceClient = new TableServiceClient(getStorageAccountUrl(), getManagedIdentityCredential());
+      serviceClient = new TableServiceClient(getStorageAccountUrl(), getCredential());
     }
   }
   return serviceClient;
@@ -42,7 +69,7 @@ function getTableClient(tableName: string): TableClient {
     if (isLocalDev()) {
       tableClients.set(tableName, TableClient.fromConnectionString(getConnectionString(), tableName));
     } else {
-      tableClients.set(tableName, new TableClient(getStorageAccountUrl(), tableName, getManagedIdentityCredential()));
+      tableClients.set(tableName, new TableClient(getStorageAccountUrl(), tableName, getCredential()));
     }
   }
   return tableClients.get(tableName)!;

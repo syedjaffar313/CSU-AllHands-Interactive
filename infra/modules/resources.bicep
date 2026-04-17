@@ -37,7 +37,7 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   }
 }
 
-// ─── Azure Storage Account (Table Storage) ───
+// ─── Azure Storage Account (Table Storage for app data) ───
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   name: storageName
   location: location
@@ -106,8 +106,6 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   }
 }
 
-// No storage key secret needed — using Managed Identity
-
 resource signalRSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
   name: 'signalr-connection-string'
@@ -116,7 +114,7 @@ resource signalRSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   }
 }
 
-// ─── Azure Static Web Apps (Standard) ───
+// ─── Azure Static Web Apps (Standard, with managed API) ───
 resource staticWebApp 'Microsoft.Web/staticSites@2024-04-01' = {
   name: swaName
   location: location
@@ -136,7 +134,17 @@ resource staticWebApp 'Microsoft.Web/staticSites@2024-04-01' = {
   }
 }
 
-// ─── RBAC: Storage Table Data Contributor for SWA managed identity ───
+// ─── SWA App Settings (injected into managed functions) ───
+resource swaAppSettings 'Microsoft.Web/staticSites/config@2024-04-01' = {
+  parent: staticWebApp
+  name: 'appsettings'
+  properties: {
+    STORAGE_ACCOUNT_URL: 'https://${storageAccount.name}.table.${environment().suffixes.storage}'
+    SIGNALR_CONNECTION_STRING: signalR.listKeys().primaryConnectionString
+  }
+}
+
+// ─── RBAC: Storage Table Data Contributor for SWA ───
 resource storageTableRbac 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(storageAccount.id, staticWebApp.id, '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')
   scope: storageAccount
@@ -144,17 +152,6 @@ resource storageTableRbac 'Microsoft.Authorization/roleAssignments@2022-04-01' =
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')
     principalId: staticWebApp.identity.principalId
     principalType: 'ServicePrincipal'
-  }
-}
-
-// ─── Application settings for SWA (linked Functions) ───
-resource swaAppSettings 'Microsoft.Web/staticSites/config@2024-04-01' = {
-  parent: staticWebApp
-  name: 'appsettings'
-  properties: {
-    STORAGE_ACCOUNT_URL: 'https://${storageAccount.name}.table.${environment().suffixes.storage}'
-    SIGNALR_CONNECTION_STRING: signalR.listKeys().primaryConnectionString
-    APPINSIGHTS_INSTRUMENTATIONKEY: appInsights.properties.InstrumentationKey
   }
 }
 

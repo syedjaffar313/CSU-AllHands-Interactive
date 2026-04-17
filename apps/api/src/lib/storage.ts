@@ -1,8 +1,16 @@
 import { TableClient, TableServiceClient } from '@azure/data-tables';
-import { DefaultAzureCredential } from '@azure/identity';
+import { ManagedIdentityCredential } from '@azure/identity';
 
 let serviceClient: TableServiceClient | null = null;
 const tableClients = new Map<string, TableClient>();
+let credential: ManagedIdentityCredential | null = null;
+
+function getManagedIdentityCredential(): ManagedIdentityCredential {
+  if (!credential) {
+    credential = new ManagedIdentityCredential();
+  }
+  return credential;
+}
 
 function isLocalDev(): boolean {
   return !!process.env.STORAGE_CONNECTION_STRING;
@@ -23,7 +31,7 @@ function getServiceClient(): TableServiceClient {
     if (isLocalDev()) {
       serviceClient = TableServiceClient.fromConnectionString(getConnectionString());
     } else {
-      serviceClient = new TableServiceClient(getStorageAccountUrl(), new DefaultAzureCredential());
+      serviceClient = new TableServiceClient(getStorageAccountUrl(), getManagedIdentityCredential());
     }
   }
   return serviceClient;
@@ -34,7 +42,7 @@ function getTableClient(tableName: string): TableClient {
     if (isLocalDev()) {
       tableClients.set(tableName, TableClient.fromConnectionString(getConnectionString(), tableName));
     } else {
-      tableClients.set(tableName, new TableClient(getStorageAccountUrl(), tableName, new DefaultAzureCredential()));
+      tableClients.set(tableName, new TableClient(getStorageAccountUrl(), tableName, getManagedIdentityCredential()));
     }
   }
   return tableClients.get(tableName)!;

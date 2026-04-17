@@ -1,24 +1,26 @@
-import { TableClient, TableServiceClient, odata } from '@azure/data-tables';
+import { TableClient, TableServiceClient } from '@azure/data-tables';
+import { DefaultAzureCredential } from '@azure/identity';
 
 let serviceClient: TableServiceClient | null = null;
 const tableClients = new Map<string, TableClient>();
 
-function getConnectionString(): string {
-  const cs = process.env.STORAGE_CONNECTION_STRING;
-  if (!cs) throw new Error('STORAGE_CONNECTION_STRING not set');
-  return cs;
+const STORAGE_ACCOUNT = process.env.STORAGE_ACCOUNT_NAME || 'ecaborage2026';
+const TABLE_ENDPOINT = `https://${STORAGE_ACCOUNT}.table.core.windows.net`;
+
+function getCredential() {
+  return new DefaultAzureCredential();
 }
 
 function getServiceClient(): TableServiceClient {
   if (!serviceClient) {
-    serviceClient = TableServiceClient.fromConnectionString(getConnectionString());
+    serviceClient = new TableServiceClient(TABLE_ENDPOINT, getCredential());
   }
   return serviceClient;
 }
 
 function getTableClient(tableName: string): TableClient {
   if (!tableClients.has(tableName)) {
-    tableClients.set(tableName, TableClient.fromConnectionString(getConnectionString(), tableName));
+    tableClients.set(tableName, new TableClient(TABLE_ENDPOINT, tableName, getCredential()));
   }
   return tableClients.get(tableName)!;
 }

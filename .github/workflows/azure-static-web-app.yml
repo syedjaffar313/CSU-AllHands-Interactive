@@ -75,6 +75,7 @@ jobs:
         working-directory: apps/api
         run: |
           npm ci
+          rm -rf dist
           npm run build
 
       - name: Create API local.settings.json for language detection

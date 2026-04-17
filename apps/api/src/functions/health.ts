@@ -11,6 +11,7 @@ app.http('health', {
       jsonBody: {
         status: 'ok',
         timestamp: new Date().toISOString(),
+        version: '2.0.0-swa-msi',
         env: {
           hasStorageConnectionString: !!process.env.STORAGE_CONNECTION_STRING,
           hasStorageAccountUrl: !!process.env.STORAGE_ACCOUNT_URL,

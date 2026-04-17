@@ -77,6 +77,10 @@ jobs:
           npm ci
           npm run build
 
+      - name: Create API local.settings.json for language detection
+        run: |
+          echo '{"IsEncrypted":false,"Values":{"FUNCTIONS_WORKER_RUNTIME":"node","AzureWebJobsStorage":""}}' > apps/api/local.settings.json
+
       - name: Deploy to SWA (frontend + managed API)
         id: swa
         uses: Azure/static-web-apps-deploy@v1

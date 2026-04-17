@@ -29,7 +29,7 @@
 ### Secrets Inventory
 | Secret | Location | Rotation |
 |--------|----------|----------|
-| Cosmos DB connection string | Key Vault + SWA App Settings | Auto (Key Vault) |
+| Storage connection string | Key Vault + SWA App Settings | Auto (Key Vault) |
 | SignalR connection string | Key Vault + SWA App Settings | Manual rotation |
 | App Insights key | SWA App Settings | N/A (not sensitive) |
 | Entra Client Secret | SWA App Settings | 6-month rotation recommended |
@@ -53,12 +53,12 @@
 ### Data Minimization
 - Only data necessary for interaction is collected:
   - `eventCode`, `questionId`, `answer`, `deviceId` (random UUID), optional `nickname`
-- No emails, names, IP addresses, or user agents stored in Cosmos DB
+- No emails, names, IP addresses, or user agents stored in Table Storage
 - Device IDs are random and reset if user clears localStorage
 
 ### Retention & Deletion
 - Events have configurable `retentionDays` (default: 30)
-- Cosmos DB TTL automatically expires documents after retention period
+- Application-level cleanup handles expired data based on retention period
 - **Manual deletion:** `/control` panel has "Delete Event" which removes all related data
 - Key Vault has soft delete (7 days) for accidental secret deletion
 
@@ -84,7 +84,7 @@
 | @microsoft/signalr | MIT |
 | framer-motion | MIT |
 | qrcode.react | ISC |
-| @azure/cosmos | MIT |
+| @azure/data-tables | MIT |
 | @azure/identity | MIT |
 | @azure/keyvault-secrets | MIT |
 | @azure/functions | MIT |

@@ -6,7 +6,7 @@ param tags object
 param tenantId string = ''
 
 var uniqueSuffix = uniqueString(resourceGroup().id, baseName)
-var cosmosName = '${baseName}-cosmos-${uniqueSuffix}'
+var storageName = toLower('stec${uniqueSuffix}')
 var signalRName = '${baseName}-signalr-${uniqueSuffix}'
 var kvName = 'kv-ec-${uniqueSuffix}'
 var logName = '${baseName}-logs-${env}'
@@ -37,75 +37,39 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   }
 }
 
-// ─── Azure Cosmos DB (NoSQL, Autoscale) ───
-resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
-  name: cosmosName
+// ─── Azure Storage Account (Table Storage) ───
+resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
+  name: storageName
   location: location
   tags: tags
-  kind: 'GlobalDocumentDB'
+  kind: 'StorageV2'
+  sku: { name: 'Standard_LRS' }
   properties: {
-    databaseAccountOfferType: 'Standard'
-    consistencyPolicy: { defaultConsistencyLevel: 'Session' }
-    locations: [
-      { locationName: location, failoverPriority: 0, isZoneRedundant: false }
-    ]
-    disableLocalAuth: false
-    enableAutomaticFailover: true
-    enableMultipleWriteLocations: false
+    minimumTlsVersion: 'TLS1_2'
+    supportsHttpsTrafficOnly: true
+    allowBlobPublicAccess: false
     publicNetworkAccess: 'Enabled'
   }
 }
 
-resource cosmosDb 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-05-15' = {
-  parent: cosmosAccount
-  name: 'eventcompanion'
-  properties: {
-    resource: { id: 'eventcompanion' }
-  }
+resource tableService 'Microsoft.Storage/storageAccounts/tableServices@2023-05-01' = {
+  parent: storageAccount
+  name: 'default'
 }
 
-resource eventsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = {
-  parent: cosmosDb
+resource eventsTable 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-05-01' = {
+  parent: tableService
   name: 'events'
-  properties: {
-    resource: {
-      id: 'events'
-      partitionKey: { paths: ['/eventCode'], kind: 'Hash' }
-      defaultTtl: -1
-    }
-    options: { autoscaleSettings: { maxThroughput: 4000 } }
-  }
 }
 
-resource questionsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = {
-  parent: cosmosDb
+resource questionsTable 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-05-01' = {
+  parent: tableService
   name: 'questions'
-  properties: {
-    resource: {
-      id: 'questions'
-      partitionKey: { paths: ['/eventCode'], kind: 'Hash' }
-      defaultTtl: -1
-    }
-    options: { autoscaleSettings: { maxThroughput: 4000 } }
-  }
 }
 
-resource responsesContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = {
-  parent: cosmosDb
+resource responsesTable 'Microsoft.Storage/storageAccounts/tableServices/tables@2023-05-01' = {
+  parent: tableService
   name: 'responses'
-  properties: {
-    resource: {
-      id: 'responses'
-      partitionKey: { paths: ['/eventCode'], kind: 'Hash' }
-      defaultTtl: -1
-      indexingPolicy: {
-        indexingMode: 'consistent'
-        includedPaths: [{ path: '/*' }]
-        excludedPaths: [{ path: '/"_etag"/?' }]
-      }
-    }
-    options: { autoscaleSettings: { maxThroughput: 10000 } }
-  }
 }
 
 // ─── Azure SignalR Service (Serverless) ───
@@ -142,12 +106,12 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   }
 }
 
-// Store Cosmos connection string in Key Vault
-resource cosmosSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+// Store Storage connection string in Key Vault
+resource storageSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
-  name: 'cosmos-connection-string'
+  name: 'storage-connection-string'
   properties: {
-    value: cosmosAccount.listConnectionStrings().connectionStrings[0].connectionString
+    value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
   }
 }
 
@@ -181,9 +145,7 @@ resource swaAppSettings 'Microsoft.Web/staticSites/config@2024-04-01' = {
   parent: staticWebApp
   name: 'appsettings'
   properties: {
-    COSMOS_ENDPOINT: cosmosAccount.properties.documentEndpoint
-    COSMOS_KEY: cosmosAccount.listKeys().primaryMasterKey
-    COSMOS_DATABASE: 'eventcompanion'
+    STORAGE_CONNECTION_STRING: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
     SIGNALR_CONNECTION_STRING: signalR.listKeys().primaryConnectionString
     APPINSIGHTS_INSTRUMENTATIONKEY: appInsights.properties.InstrumentationKey
   }
@@ -192,6 +154,6 @@ resource swaAppSettings 'Microsoft.Web/staticSites/config@2024-04-01' = {
 // ─── Outputs ───
 output staticWebAppDefaultHostname string = staticWebApp.properties.defaultHostname
 output signalREndpoint string = 'https://${signalR.properties.hostName}'
-output cosmosEndpoint string = cosmosAccount.properties.documentEndpoint
+output storageAccountName string = storageAccount.name
 output keyVaultUri string = keyVault.properties.vaultUri
 output appInsightsInstrumentationKey string = appInsights.properties.InstrumentationKey

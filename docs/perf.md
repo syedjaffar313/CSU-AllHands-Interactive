@@ -82,15 +82,15 @@
 
 ## Backend Optimization
 
-### Cosmos DB
+### Azure Table Storage
 - Partition key: `eventCode` → all queries within a single partition (efficient)
-- Autoscale: 4000 RU/s for events/questions, 10000 RU/s for responses
-- Point reads for event/question lookups (by id + partition key)
+- Point reads for event/question lookups (by partitionKey + rowKey)
 - Cross-partition queries avoided by design
+- Standard_LRS provides low-latency access for event-scale workloads
 
 ### Azure Functions
 - Cold start mitigated by SWA Managed Functions (always warm after first request)
-- Singleton Cosmos client (reused across invocations)
+- Singleton TableServiceClient (reused across invocations)
 - No unnecessary middleware or heavy initialization
 
 ## Fallback Polling
@@ -110,12 +110,12 @@ When SignalR connection fails:
 - SignalR Standard S1: supports 1000 concurrent connections
 
 ### Scaling Recommendations
-| Attendees | SignalR SKU | Cosmos RU/s | Notes |
+| Attendees | SignalR SKU | Storage Tier | Notes |
 |-----------|-------------|-------------|-------|
-| < 500 | Standard S1 (1 unit) | 4000/10000 autoscale | Default config |
-| 500-2000 | Standard S1 (2 units) | 10000/20000 autoscale | Increase SignalR units |
-| 2000-5000 | Standard S1 (5 units) | 20000/40000 autoscale | Consider broadcast batching |
-| 5000+ | Premium P1 | 40000+ | Add Azure Front Door + aggressive caching |
+| < 500 | Standard S1 (1 unit) | Standard_LRS | Default config |
+| 500-2000 | Standard S1 (2 units) | Standard_LRS | Increase SignalR units |
+| 2000-5000 | Standard S1 (5 units) | Standard_LRS | Consider broadcast batching |
+| 5000+ | Premium P1 | Standard_GRS | Add Azure Front Door + aggressive caching |
 
 ### Testing Commands
 ```bash
@@ -128,6 +128,6 @@ k6 run --vus 500 --duration 60s load-test.js
 | Alert | Condition | Action |
 |-------|-----------|--------|
 | API errors > 5% | App Insights failure rate | Check function logs |
-| API latency p95 > 2s | App Insights response time | Scale Cosmos RU/s |
+| API latency p95 > 2s | App Insights response time | Check Table Storage latency |
 | SignalR connections > 80% capacity | SignalR metrics | Scale SignalR units |
-| Cosmos 429 (throttled) > 0 | Cosmos metrics | Increase autoscale max |
+| Storage throttling > 0 | Storage metrics | Review partition strategy |

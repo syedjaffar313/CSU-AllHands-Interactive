@@ -22,7 +22,7 @@ az deployment sub create \
 
 This creates:
 - Resource group `rg-eventcompanion-prod`
-- Cosmos DB (autoscale, NoSQL)
+- Azure Storage Account (Table Storage)
 - Azure SignalR Service (serverless)
 - Azure Key Vault
 - Application Insights + Log Analytics
@@ -89,9 +89,7 @@ In Azure Portal → Static Web App → Configuration → Application settings, a
 
 | Key | Value |
 |-----|-------|
-| `COSMOS_ENDPOINT` | (from Bicep output) |
-| `COSMOS_KEY` | (from Cosmos DB keys) |
-| `COSMOS_DATABASE` | `eventcompanion` |
+| `STORAGE_CONNECTION_STRING` | (from Storage Account keys or Bicep output) |
 | `SIGNALR_CONNECTION_STRING` | (from SignalR keys) |
 | `APPINSIGHTS_INSTRUMENTATIONKEY` | (from App Insights) |
 

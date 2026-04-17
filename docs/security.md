@@ -65,7 +65,7 @@
 | SWA CORS | Configured per staticwebapp.config.json | No wildcard in production |
 | Key Vault soft delete | Enabled (7 days) | Prevents accidental permanent deletion |
 | Key Vault purge protection | Enabled | Cannot be disabled after creation |
-| Cosmos DB local auth | Enabled (for key-based access) | Consider disabling + using Managed Identity |
+| Storage Account HTTPS only | Enabled | TLS 1.2 minimum |
 | SignalR CORS | Wildcard (for dev) | Restrict to SWA domain in production |
 | Remote debugging | Not enabled | Do not enable in production |
 

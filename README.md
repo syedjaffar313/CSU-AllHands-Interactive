@@ -1,7 +1,7 @@
 # Event Companion – CSU All Hands Interactive Activity
 
 A production-grade, Microsoft-internal-compliant real-time interactive web app for in-person events.
-Built with Next.js, Fluent UI v9, Azure Functions, Azure SignalR Service, and Cosmos DB.
+Built with Next.js, Fluent UI v9, Azure Functions, Azure SignalR Service, and Azure Table Storage.
 
 ## Features
 
@@ -17,7 +17,7 @@ Built with Next.js, Fluent UI v9, Azure Functions, Azure SignalR Service, and Co
 | Hosting | Azure Static Web Apps (Standard) |
 | API | Azure Functions (Node 20 / TypeScript) |
 | Real-time | Azure SignalR Service (Serverless mode) |
-| Data | Azure Cosmos DB (NoSQL, autoscale) |
+| Data | Azure Table Storage |
 | Secrets | Azure Key Vault + Managed Identity |
 | Auth | Microsoft Entra ID (admin /control) |
 | Observability | Application Insights + Log Analytics |

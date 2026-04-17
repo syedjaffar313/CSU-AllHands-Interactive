@@ -44,6 +44,6 @@ module resources 'modules/resources.bicep' = {
 output resourceGroupName string = rg.name
 output staticWebAppUrl string = resources.outputs.staticWebAppDefaultHostname
 output signalREndpoint string = resources.outputs.signalREndpoint
-output cosmosEndpoint string = resources.outputs.cosmosEndpoint
+output storageAccountName string = resources.outputs.storageAccountName
 output keyVaultUri string = resources.outputs.keyVaultUri
 output appInsightsKey string = resources.outputs.appInsightsInstrumentationKey

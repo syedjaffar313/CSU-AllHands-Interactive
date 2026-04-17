@@ -87,6 +87,7 @@ jobs:
           app_location: 'apps/web'
           api_location: 'apps/api'
           output_location: 'out'
+          skip_api_build: true
 
   close-pull-request:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'

@@ -12,11 +12,7 @@ app.http('health', {
         status: 'ok',
         timestamp: new Date().toISOString(),
         env: {
-          hasCosmos: !!process.env.COSMOS_ENDPOINT,
-          hasCosmosKey: !!process.env.COSMOS_KEY,
-          hasClientId: !!process.env.AZURE_CLIENT_ID,
-          hasClientSecret: !!process.env.AZURE_CLIENT_SECRET,
-          hasTenantId: !!process.env.AZURE_TENANT_ID,
+          hasStorageConnectionString: !!process.env.STORAGE_CONNECTION_STRING,
           hasSignalR: !!process.env.SIGNALR_CONNECTION_STRING,
           hasIdentityEndpoint: !!process.env.IDENTITY_ENDPOINT,
           nodeVersion: process.version,

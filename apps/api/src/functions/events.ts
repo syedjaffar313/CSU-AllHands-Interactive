@@ -55,7 +55,7 @@ app.http('createEvent', {
       return { status: 201, jsonBody: doc };
     } catch (err: any) {
       context.error('createEvent error', err);
-      return { status: 500, jsonBody: { error: 'Internal error' } };
+      return { status: 500, jsonBody: { error: 'Internal error', debug: err.message } };
     }
   },
 });

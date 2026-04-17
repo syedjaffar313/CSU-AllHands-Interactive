@@ -1,24 +1,41 @@
 import { TableClient, TableServiceClient } from '@azure/data-tables';
+import { DefaultAzureCredential } from '@azure/identity';
 
 let serviceClient: TableServiceClient | null = null;
 const tableClients = new Map<string, TableClient>();
 
+function isLocalDev(): boolean {
+  return !!process.env.STORAGE_CONNECTION_STRING;
+}
+
 function getConnectionString(): string {
-  const cs = process.env.STORAGE_CONNECTION_STRING;
-  if (!cs) throw new Error('STORAGE_CONNECTION_STRING not set');
-  return cs;
+  return process.env.STORAGE_CONNECTION_STRING!;
+}
+
+function getStorageAccountUrl(): string {
+  const url = process.env.STORAGE_ACCOUNT_URL;
+  if (!url) throw new Error('STORAGE_ACCOUNT_URL or STORAGE_CONNECTION_STRING must be set');
+  return url;
 }
 
 function getServiceClient(): TableServiceClient {
   if (!serviceClient) {
-    serviceClient = TableServiceClient.fromConnectionString(getConnectionString());
+    if (isLocalDev()) {
+      serviceClient = TableServiceClient.fromConnectionString(getConnectionString());
+    } else {
+      serviceClient = new TableServiceClient(getStorageAccountUrl(), new DefaultAzureCredential());
+    }
   }
   return serviceClient;
 }
 
 function getTableClient(tableName: string): TableClient {
   if (!tableClients.has(tableName)) {
-    tableClients.set(tableName, TableClient.fromConnectionString(getConnectionString(), tableName));
+    if (isLocalDev()) {
+      tableClients.set(tableName, TableClient.fromConnectionString(getConnectionString(), tableName));
+    } else {
+      tableClients.set(tableName, new TableClient(getStorageAccountUrl(), tableName, new DefaultAzureCredential()));
+    }
   }
   return tableClients.get(tableName)!;
 }

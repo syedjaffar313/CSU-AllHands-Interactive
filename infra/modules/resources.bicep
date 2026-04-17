@@ -106,14 +106,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   }
 }
 
-// Store Storage connection string in Key Vault
-resource storageSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
-  parent: keyVault
-  name: 'storage-connection-string'
-  properties: {
-    value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
-  }
-}
+// No storage key secret needed — using Managed Identity
 
 resource signalRSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
@@ -129,6 +122,9 @@ resource staticWebApp 'Microsoft.Web/staticSites@2024-04-01' = {
   location: location
   tags: tags
   sku: { name: 'Standard', tier: 'Standard' }
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     stagingEnvironmentPolicy: 'Enabled'
     allowConfigFileUpdates: true
@@ -140,12 +136,23 @@ resource staticWebApp 'Microsoft.Web/staticSites@2024-04-01' = {
   }
 }
 
+// ─── RBAC: Storage Table Data Contributor for SWA managed identity ───
+resource storageTableRbac 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storageAccount.id, staticWebApp.id, '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')
+  scope: storageAccount
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')
+    principalId: staticWebApp.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 // ─── Application settings for SWA (linked Functions) ───
 resource swaAppSettings 'Microsoft.Web/staticSites/config@2024-04-01' = {
   parent: staticWebApp
   name: 'appsettings'
   properties: {
-    STORAGE_CONNECTION_STRING: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
+    STORAGE_ACCOUNT_URL: 'https://${storageAccount.name}.table.${environment().suffixes.storage}'
     SIGNALR_CONNECTION_STRING: signalR.listKeys().primaryConnectionString
     APPINSIGHTS_INSTRUMENTATIONKEY: appInsights.properties.InstrumentationKey
   }

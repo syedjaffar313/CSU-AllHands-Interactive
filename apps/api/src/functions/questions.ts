@@ -1,5 +1,5 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
-import { questionsContainer, eventsContainer } from '../lib/cosmos';
+import { questionsTable, eventsTable, toTableEntity, fromTableEntity, queryEntities } from '../lib/storage';
 import { v4 as uuidv4 } from 'uuid';
 import { sanitize } from '../lib/validation';
 import { broadcastActiveQuestion, broadcastResults } from '../lib/signalr';
@@ -8,8 +8,10 @@ import type {
   QuestionDoc,
   CreateQuestionRequest,
   EventDoc,
-  QuestionStatus,
 } from '../../../../packages/shared/types';
+
+const Q_JSON_FIELDS = ['options', 'settings'];
+const E_JSON_FIELDS = ['settings'];
 
 /** POST /api/questions – create a draft question */
 app.http('createQuestion', {
@@ -54,8 +56,9 @@ app.http('createQuestion', {
         createdAt: new Date().toISOString(),
       };
 
-      const container = questionsContainer();
-      await container.items.create(doc);
+      const table = questionsTable();
+      const entity = toTableEntity(doc, doc.eventCode, doc.id);
+      await table.createEntity(entity);
 
       return { status: 201, jsonBody: doc };
     } catch (err: any) {
@@ -73,15 +76,10 @@ app.http('listQuestions', {
   handler: async (req: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
     try {
       const eventCode = (req.params.eventCode || '').toUpperCase();
-      const container = questionsContainer();
-      const { resources } = await container.items
-        .query<QuestionDoc>({
-          query: 'SELECT * FROM c WHERE c.eventCode = @ec ORDER BY c.createdAt DESC',
-          parameters: [{ name: '@ec', value: eventCode }],
-        })
-        .fetchAll();
-
-      return { status: 200, jsonBody: resources };
+      const table = questionsTable();
+      const results = await queryEntities<QuestionDoc>(table, `PartitionKey eq '${eventCode}'`, Q_JSON_FIELDS);
+      results.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      return { status: 200, jsonBody: results };
     } catch (err: any) {
       context.error('listQuestions error', err);
       return { status: 500, jsonBody: { error: 'Internal error' } };
@@ -100,38 +98,48 @@ app.http('launchQuestion', {
       const body = (await req.json()) as { eventCode: string };
       const eventCode = (body.eventCode || '').toUpperCase();
 
-      const qContainer = questionsContainer();
-      const { resource: question } = await qContainer.item(questionId, eventCode).read<QuestionDoc>();
-      if (!question) return { status: 404, jsonBody: { error: 'Question not found' } };
+      const qTable = questionsTable();
+      let question: QuestionDoc;
+      try {
+        const entity = await qTable.getEntity(eventCode, questionId);
+        question = fromTableEntity<QuestionDoc>(entity, Q_JSON_FIELDS);
+      } catch (e: any) {
+        if (e.statusCode === 404) return { status: 404, jsonBody: { error: 'Question not found' } };
+        throw e;
+      }
 
       // Close any currently active question
-      const eContainer = eventsContainer();
-      const { resource: event } = await eContainer.item(eventCode, eventCode).read<EventDoc>();
+      const eTable = eventsTable();
+      let event: EventDoc | null = null;
+      try {
+        const eEntity = await eTable.getEntity(eventCode, eventCode);
+        event = fromTableEntity<EventDoc>(eEntity, E_JSON_FIELDS);
+      } catch { /* event may not exist */ }
+
       if (event?.activeQuestionId && event.activeQuestionId !== questionId) {
         try {
-          const { resource: prev } = await qContainer.item(event.activeQuestionId, eventCode).read<QuestionDoc>();
+          const prevEntity = await qTable.getEntity(eventCode, event.activeQuestionId);
+          const prev = fromTableEntity<QuestionDoc>(prevEntity, Q_JSON_FIELDS);
           if (prev && prev.status === 'LIVE') {
             prev.status = 'CLOSED';
             prev.closedAt = new Date().toISOString();
-            await qContainer.item(prev.id, eventCode).replace(prev);
+            await qTable.updateEntity(toTableEntity(prev, eventCode, prev.id), 'Replace');
           }
         } catch { /* previous question may have been deleted */ }
       }
 
       // Launch this question
       question.status = 'LIVE';
-      question.createdAt = new Date().toISOString(); // reset start time for quiz countdown
-      await qContainer.item(questionId, eventCode).replace(question);
+      question.createdAt = new Date().toISOString();
+      await qTable.updateEntity(toTableEntity(question, eventCode, question.id), 'Replace');
 
       // Update event
       if (event) {
         event.activeQuestionId = questionId;
-        await eContainer.item(eventCode, eventCode).replace(event);
+        await eTable.updateEntity(toTableEntity(event, eventCode, eventCode), 'Replace');
       }
 
-      // Broadcast
       await broadcastActiveQuestion(eventCode, question);
-
       return { status: 200, jsonBody: question };
     } catch (err: any) {
       context.error('launchQuestion error', err);
@@ -151,24 +159,32 @@ app.http('closeQuestion', {
       const body = (await req.json()) as { eventCode: string };
       const eventCode = (body.eventCode || '').toUpperCase();
 
-      const qContainer = questionsContainer();
-      const { resource: question } = await qContainer.item(questionId, eventCode).read<QuestionDoc>();
-      if (!question) return { status: 404, jsonBody: { error: 'Question not found' } };
+      const qTable = questionsTable();
+      let question: QuestionDoc;
+      try {
+        const entity = await qTable.getEntity(eventCode, questionId);
+        question = fromTableEntity<QuestionDoc>(entity, Q_JSON_FIELDS);
+      } catch (e: any) {
+        if (e.statusCode === 404) return { status: 404, jsonBody: { error: 'Question not found' } };
+        throw e;
+      }
 
       question.status = 'CLOSED';
       question.closedAt = new Date().toISOString();
-      await qContainer.item(questionId, eventCode).replace(question);
+      await qTable.updateEntity(toTableEntity(question, eventCode, question.id), 'Replace');
 
       // Clear active question on event
-      const eContainer = eventsContainer();
-      const { resource: event } = await eContainer.item(eventCode, eventCode).read<EventDoc>();
-      if (event && event.activeQuestionId === questionId) {
-        event.activeQuestionId = null;
-        await eContainer.item(eventCode, eventCode).replace(event);
-      }
+      const eTable = eventsTable();
+      try {
+        const eEntity = await eTable.getEntity(eventCode, eventCode);
+        const event = fromTableEntity<EventDoc>(eEntity, E_JSON_FIELDS);
+        if (event && event.activeQuestionId === questionId) {
+          event.activeQuestionId = null;
+          await eTable.updateEntity(toTableEntity(event, eventCode, eventCode), 'Replace');
+        }
+      } catch { /* event may not exist */ }
 
       await broadcastActiveQuestion(eventCode, null);
-
       return { status: 200, jsonBody: question };
     } catch (err: any) {
       context.error('closeQuestion error', err);
@@ -188,14 +204,19 @@ app.http('revealAnswer', {
       const body = (await req.json()) as { eventCode: string };
       const eventCode = (body.eventCode || '').toUpperCase();
 
-      const qContainer = questionsContainer();
-      const { resource: question } = await qContainer.item(questionId, eventCode).read<QuestionDoc>();
-      if (!question) return { status: 404, jsonBody: { error: 'Question not found' } };
+      const qTable = questionsTable();
+      let question: QuestionDoc;
+      try {
+        const entity = await qTable.getEntity(eventCode, questionId);
+        question = fromTableEntity<QuestionDoc>(entity, Q_JSON_FIELDS);
+      } catch (e: any) {
+        if (e.statusCode === 404) return { status: 404, jsonBody: { error: 'Question not found' } };
+        throw e;
+      }
+
       if (question.type !== 'quiz') return { status: 400, jsonBody: { error: 'Not a quiz' } };
 
       const quizState = await buildQuizState(eventCode, question, true);
-
-      // Broadcast revealed results
       await broadcastResults(eventCode, questionId, 'quiz', undefined, undefined, quizState);
 
       return { status: 200, jsonBody: quizState };

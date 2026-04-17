@@ -1,48 +1,61 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
-import { questionsContainer } from '../lib/cosmos';
-import { sanitize } from '../lib/validation';
-import type { QuestionTemplate, QuestionDoc } from '../../../../packages/shared/types';
+import { questionsTable, toTableEntity, queryEntities } from '../lib/storage';
 import { v4 as uuidv4 } from 'uuid';
+import type { QuestionDoc } from '../../../../packages/shared/types';
 
-const SEED_TEMPLATES: QuestionTemplate[] = [
+const Q_JSON_FIELDS = ['options', 'settings'];
+
+const TEMPLATES: Omit<QuestionDoc, 'id' | 'eventCode' | 'createdAt'>[] = [
   {
-    name: 'Describe CSU in one word',
     type: 'wordcloud',
-    prompt: 'Describe CSU in one word!',
-    settings: { maxSubmissionLength: 25, slowModeSeconds: 5 },
+    prompt: 'In one word, what excites you most about CSU?',
+    status: 'DRAFT',
+    settings: { maxSubmissionLength: 25, slowModeSeconds: 5, multiSelect: false, hideResultsWhileLive: false },
   },
   {
-    name: 'Which topic should we go deeper on?',
     type: 'poll',
-    prompt: 'Which topic should we go deeper on?',
-    options: [
-      'Cloud Infrastructure',
-      'AI & Machine Learning',
-      'Security & Compliance',
-      'Developer Experience',
-      'Customer Success Stories',
-    ],
+    prompt: 'Which CSU value resonates with you the most?',
+    options: ['Customer Obsession', 'One Microsoft', 'Growth Mindset', 'Diversity & Inclusion'],
+    status: 'DRAFT',
     settings: { multiSelect: false, hideResultsWhileLive: false },
   },
   {
-    name: 'Energizer Quiz – Q1',
     type: 'quiz',
-    prompt: 'What year was Microsoft founded?',
-    options: ['1972', '1975', '1980', '1985'],
-    correctOptionIndex: 1,
-    settings: { countdownSeconds: 15 },
+    prompt: 'How many countries does CSU operate in?',
+    options: ['50+', '100+', '120+', '150+'],
+    correctOptionIndex: 2,
+    status: 'DRAFT',
+    settings: { countdownSeconds: 15, multiSelect: false, hideResultsWhileLive: false },
   },
   {
-    name: 'Energizer Quiz – Q2',
+    type: 'wordcloud',
+    prompt: 'What is one thing you are proud of from this fiscal year?',
+    status: 'DRAFT',
+    settings: { maxSubmissionLength: 40, slowModeSeconds: 5, multiSelect: false, hideResultsWhileLive: false },
+  },
+  {
+    type: 'poll',
+    prompt: 'What topic would you like to hear more about?',
+    options: ['AI & Innovation', 'Career Growth', 'Work-Life Balance', 'Customer Success Stories'],
+    status: 'DRAFT',
+    settings: { multiSelect: true, hideResultsWhileLive: false },
+  },
+  {
     type: 'quiz',
-    prompt: 'Which Azure region was the first to launch?',
-    options: ['East US', 'West US', 'North Europe', 'Southeast Asia'],
-    correctOptionIndex: 0,
-    settings: { countdownSeconds: 15 },
+    prompt: 'What does CSU stand for?',
+    options: [
+      'Customer Service Unit',
+      'Customer Success Unit',
+      'Cloud Solutions Unit',
+      'Customer Support & Usage',
+    ],
+    correctOptionIndex: 1,
+    status: 'DRAFT',
+    settings: { countdownSeconds: 10, multiSelect: false, hideResultsWhileLive: false },
   },
 ];
 
-/** POST /api/seed/{eventCode} – load seed templates as draft questions */
+/** POST /api/seed/{eventCode} – seed template questions */
 app.http('seedTemplates', {
   methods: ['POST'],
   authLevel: 'anonymous',
@@ -52,28 +65,21 @@ app.http('seedTemplates', {
       const eventCode = (req.params.eventCode || '').toUpperCase();
       if (!eventCode) return { status: 400, jsonBody: { error: 'eventCode required' } };
 
-      const container = questionsContainer();
-      const created: QuestionDoc[] = [];
+      const table = questionsTable();
+      const existing = await queryEntities<QuestionDoc>(table, `PartitionKey eq '${eventCode}'`, Q_JSON_FIELDS);
+      if (existing.length > 0) {
+        return { status: 409, jsonBody: { error: `Event ${eventCode} already has ${existing.length} questions` } };
+      }
 
-      for (const tpl of SEED_TEMPLATES) {
+      const created: QuestionDoc[] = [];
+      for (const tmpl of TEMPLATES) {
         const doc: QuestionDoc = {
+          ...tmpl,
           id: uuidv4(),
           eventCode,
-          type: tpl.type,
-          prompt: tpl.prompt,
-          options: tpl.options,
-          correctOptionIndex: tpl.correctOptionIndex,
-          settings: {
-            countdownSeconds: tpl.settings?.countdownSeconds,
-            multiSelect: tpl.settings?.multiSelect ?? false,
-            hideResultsWhileLive: tpl.settings?.hideResultsWhileLive ?? false,
-            maxSubmissionLength: tpl.settings?.maxSubmissionLength ?? 25,
-            slowModeSeconds: tpl.settings?.slowModeSeconds ?? 5,
-          },
-          status: 'DRAFT',
           createdAt: new Date().toISOString(),
         };
-        await container.items.create(doc);
+        await table.createEntity(toTableEntity(doc, eventCode, doc.id));
         created.push(doc);
       }
 
@@ -85,12 +91,12 @@ app.http('seedTemplates', {
   },
 });
 
-/** GET /api/templates – return available templates */
+/** GET /api/seed/templates – preview available templates */
 app.http('getTemplates', {
   methods: ['GET'],
   authLevel: 'anonymous',
-  route: 'templates',
+  route: 'seed/templates',
   handler: async (): Promise<HttpResponseInit> => {
-    return { status: 200, jsonBody: SEED_TEMPLATES };
+    return { status: 200, jsonBody: TEMPLATES };
   },
 });

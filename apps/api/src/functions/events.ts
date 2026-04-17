@@ -1,8 +1,10 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
-import { eventsContainer, questionsContainer, responsesContainer, ensureDatabase } from '../lib/cosmos';
+import { eventsTable, questionsTable, responsesTable, ensureTables, toTableEntity, fromTableEntity, queryEntities } from '../lib/storage';
 import { v4 as uuidv4 } from 'uuid';
 import { sanitize } from '../lib/validation';
 import type { EventDoc, CreateEventRequest } from '../../../../packages/shared/types';
+
+const EVENT_JSON_FIELDS = ['settings'];
 
 /** POST /api/events – create a new event */
 app.http('createEvent', {
@@ -21,17 +23,17 @@ app.http('createEvent', {
         return { status: 400, jsonBody: { error: 'eventCode must be 2-20 chars' } };
       }
 
-      await ensureDatabase();
-      const container = eventsContainer();
+      await ensureTables();
+      const table = eventsTable();
 
       // Check if exists
       try {
-        const { resource } = await container.item(eventCode, eventCode).read<EventDoc>();
-        if (resource) {
+        const existing = await table.getEntity(eventCode, eventCode);
+        if (existing) {
           return { status: 409, jsonBody: { error: 'Event already exists' } };
         }
-      } catch {
-        // Not found – proceed
+      } catch (e: any) {
+        if (e.statusCode !== 404) throw e;
       }
 
       const retentionDays = body.settings?.retentionDays || 30;
@@ -46,11 +48,10 @@ app.http('createEvent', {
           allowAnonymous: body.settings?.allowAnonymous ?? true,
           retentionDays,
         },
-        // Set TTL in seconds
-        ...(retentionDays > 0 ? { ttl: retentionDays * 86400 } : {}),
       };
 
-      await container.items.create(doc);
+      const entity = toTableEntity(doc, eventCode, eventCode);
+      await table.createEntity(entity);
       return { status: 201, jsonBody: doc };
     } catch (err: any) {
       context.error('createEvent error', err);
@@ -67,16 +68,17 @@ app.http('getEvent', {
   handler: async (req: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
     try {
       const eventCode = (req.params.eventCode || '').toUpperCase();
-      const container = eventsContainer();
-      const { resource } = await container.item(eventCode, eventCode).read<EventDoc>();
+      const table = eventsTable();
 
-      if (!resource) {
-        return { status: 404, jsonBody: { error: 'Event not found' } };
+      try {
+        const entity = await table.getEntity(eventCode, eventCode);
+        const doc = fromTableEntity<EventDoc>(entity, EVENT_JSON_FIELDS);
+        return { status: 200, jsonBody: doc };
+      } catch (e: any) {
+        if (e.statusCode === 404) return { status: 404, jsonBody: { error: 'Event not found' } };
+        throw e;
       }
-
-      return { status: 200, jsonBody: resource };
     } catch (err: any) {
-      if (err.code === 404) return { status: 404, jsonBody: { error: 'Event not found' } };
       context.error('getEvent error', err);
       return { status: 500, jsonBody: { error: 'Internal error' } };
     }
@@ -93,26 +95,22 @@ app.http('deleteEvent', {
       const eventCode = (req.params.eventCode || '').toUpperCase();
 
       // Delete all questions
-      const qContainer = questionsContainer();
-      const { resources: questions } = await qContainer.items
-        .query({ query: 'SELECT c.id FROM c WHERE c.eventCode = @ec', parameters: [{ name: '@ec', value: eventCode }] })
-        .fetchAll();
+      const qTable = questionsTable();
+      const questions = await queryEntities<{ id: string }>(qTable, `PartitionKey eq '${eventCode}'`, []);
       for (const q of questions) {
-        await qContainer.item(q.id, eventCode).delete();
+        try { await qTable.deleteEntity(eventCode, q.id); } catch { /* ignore */ }
       }
 
       // Delete all responses
-      const rContainer = responsesContainer();
-      const { resources: responses } = await rContainer.items
-        .query({ query: 'SELECT c.id FROM c WHERE c.eventCode = @ec', parameters: [{ name: '@ec', value: eventCode }] })
-        .fetchAll();
+      const rTable = responsesTable();
+      const responses = await queryEntities<{ id: string }>(rTable, `PartitionKey eq '${eventCode}'`, []);
       for (const r of responses) {
-        await rContainer.item(r.id, eventCode).delete();
+        try { await rTable.deleteEntity(eventCode, r.id); } catch { /* ignore */ }
       }
 
       // Delete event
-      const container = eventsContainer();
-      await container.item(eventCode, eventCode).delete();
+      const table = eventsTable();
+      try { await table.deleteEntity(eventCode, eventCode); } catch { /* ignore */ }
 
       return { status: 200, jsonBody: { deleted: true } };
     } catch (err: any) {

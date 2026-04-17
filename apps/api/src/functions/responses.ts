@@ -1,143 +1,109 @@
 import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
-import { responsesContainer, questionsContainer } from '../lib/cosmos';
+import { responsesTable, questionsTable, queryEntities, toTableEntity, fromTableEntity } from '../lib/storage';
 import { v4 as uuidv4 } from 'uuid';
-import {
-  sanitize,
-  normalizeWordCloudText,
-  isProfane,
-  isRateLimited,
-  getDeviceId,
-} from '../lib/validation';
+import { sanitize } from '../lib/validation';
 import { broadcastResults } from '../lib/signalr';
 import { buildWordCloudTally, buildPollTally, buildQuizState } from '../lib/tally';
-import type {
-  SubmitResponseRequest,
-  ResponseDoc,
-  QuestionDoc,
-} from '../../../../packages/shared/types';
+import type { ResponseDoc, QuestionDoc } from '../../../../packages/shared/types';
 
-/** POST /api/responses – submit an audience response */
+const Q_JSON_FIELDS = ['options', 'settings'];
+const R_JSON_FIELDS = ['answer'];
+
+/** POST /api/responses – submit a response */
 app.http('submitResponse', {
   methods: ['POST'],
   authLevel: 'anonymous',
   route: 'responses',
   handler: async (req: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
     try {
-      const body = (await req.json()) as SubmitResponseRequest;
-      if (!body.eventCode || !body.questionId || body.answer === undefined) {
-        return { status: 400, jsonBody: { error: 'eventCode, questionId, answer required' } };
+      const body = (await req.json()) as {
+        eventCode: string;
+        questionId: string;
+        deviceId: string;
+        nickname?: string;
+        answer?: string | number | number[];
+        responseTimeMs?: number;
+      };
+
+      if (!body.eventCode || !body.questionId || !body.deviceId) {
+        return { status: 400, jsonBody: { error: 'eventCode, questionId, deviceId required' } };
       }
 
       const eventCode = body.eventCode.toUpperCase();
-      const deviceId = getDeviceId(req, body.deviceId);
+      const questionId = body.questionId;
 
-      // Load question to validate
-      const qContainer = questionsContainer();
-      let question: QuestionDoc | undefined;
+      // Verify question exists and is LIVE
+      const qTable = questionsTable();
+      let question: QuestionDoc;
       try {
-        const { resource } = await qContainer.item(body.questionId, eventCode).read<QuestionDoc>();
-        question = resource ?? undefined;
-      } catch {
-        return { status: 404, jsonBody: { error: 'Question not found' } };
+        const entity = await qTable.getEntity(eventCode, questionId);
+        question = fromTableEntity<QuestionDoc>(entity, Q_JSON_FIELDS);
+      } catch (e: any) {
+        if (e.statusCode === 404) return { status: 404, jsonBody: { error: 'Question not found' } };
+        throw e;
       }
 
-      if (!question || question.status !== 'LIVE') {
+      if (question.status !== 'LIVE') {
         return { status: 400, jsonBody: { error: 'Question is not live' } };
       }
 
-      // Rate limit for word cloud (slow mode)
+      // Word cloud: require string answer
       if (question.type === 'wordcloud') {
-        const windowMs = (question.settings?.slowModeSeconds || 5) * 1000;
-        if (isRateLimited(deviceId, windowMs)) {
-          return { status: 429, jsonBody: { error: 'Too fast. Wait a few seconds.' } };
+        if (!body.answer || typeof body.answer !== 'string') {
+          return { status: 400, jsonBody: { error: 'answer (string) required for wordcloud' } };
+        }
+        const maxLen = question.settings?.maxSubmissionLength ?? 25;
+        if (body.answer.length > maxLen) {
+          return { status: 400, jsonBody: { error: `Answer exceeds max length of ${maxLen}` } };
         }
       }
 
-      // For quiz/poll: check duplicate per device
-      if (question.type === 'quiz' || question.type === 'poll') {
-        const rContainer = responsesContainer();
-        const { resources: existing } = await rContainer.items
-          .query({
-            query:
-              'SELECT c.id FROM c WHERE c.eventCode = @ec AND c.questionId = @qid AND c.deviceId = @did',
-            parameters: [
-              { name: '@ec', value: eventCode },
-              { name: '@qid', value: body.questionId },
-              { name: '@did', value: deviceId },
-            ],
-          })
-          .fetchAll();
-
-        if (existing.length > 0) {
-          return { status: 409, jsonBody: { error: 'Already answered' } };
-        }
+      // Poll/quiz: require numeric answer
+      if ((question.type === 'poll' || question.type === 'quiz') && body.answer === undefined) {
+        return { status: 400, jsonBody: { error: 'answer required for poll/quiz' } };
       }
 
-      // Validate + normalize answer
-      let answer: string | number | number[] = body.answer;
-      if (question.type === 'wordcloud') {
-        const text = normalizeWordCloudText(String(answer));
-        if (!text) return { status: 400, jsonBody: { error: 'Invalid word' } };
-        if (isProfane(text)) return { status: 400, jsonBody: { error: 'Content filtered' } };
-        answer = text;
-      } else if (question.type === 'quiz') {
-        const idx = Number(answer);
-        if (isNaN(idx) || idx < 0 || idx >= (question.options?.length || 0)) {
-          return { status: 400, jsonBody: { error: 'Invalid option index' } };
-        }
-        answer = idx;
-      } else if (question.type === 'poll') {
-        if (question.settings?.multiSelect && Array.isArray(answer)) {
-          for (const idx of answer) {
-            if (typeof idx !== 'number' || idx < 0 || idx >= (question.options?.length || 0)) {
-              return { status: 400, jsonBody: { error: 'Invalid option index' } };
-            }
-          }
-        } else {
-          const idx = Number(answer);
-          if (isNaN(idx) || idx < 0 || idx >= (question.options?.length || 0)) {
-            return { status: 400, jsonBody: { error: 'Invalid option index' } };
-          }
-          answer = idx;
-        }
+      // Check duplicates (one response per device per question)
+      const rTable = responsesTable();
+      const rKey = `${eventCode}_${questionId}`;
+      const existing = await queryEntities<ResponseDoc>(
+        rTable,
+        `PartitionKey eq '${rKey}' and deviceId eq '${body.deviceId}'`,
+        R_JSON_FIELDS,
+      );
+      if (existing.length > 0) {
+        return { status: 409, jsonBody: { error: 'Already responded' } };
       }
 
-      // Calculate response time for quiz
-      let responseTimeMs: number | undefined;
-      if (question.type === 'quiz') {
-        const startTime = new Date(question.createdAt).getTime();
-        responseTimeMs = Date.now() - startTime;
-      }
+      const answerValue = question.type === 'wordcloud' ? sanitize(body.answer as string) : body.answer!;
 
       const doc: ResponseDoc = {
         id: uuidv4(),
         eventCode,
-        questionId: body.questionId,
-        deviceId,
-        nickname: body.nickname ? sanitize(body.nickname).slice(0, 30) : undefined,
-        answer,
+        questionId,
+        deviceId: body.deviceId,
+        nickname: body.nickname,
+        answer: answerValue,
         submittedAt: new Date().toISOString(),
-        responseTimeMs,
+        responseTimeMs: body.responseTimeMs,
       };
 
-      const rContainer = responsesContainer();
-      await rContainer.items.create(doc);
+      const entity = toTableEntity(doc, rKey, doc.id);
+      await rTable.createEntity(entity);
 
-      // Build and broadcast updated results
+      // Broadcast updated tallies
       if (question.type === 'wordcloud') {
-        const tally = await buildWordCloudTally(eventCode, question.id);
-        await broadcastResults(eventCode, question.id, 'wordcloud', tally);
+        const tally = await buildWordCloudTally(eventCode, questionId);
+        await broadcastResults(eventCode, questionId, 'wordcloud', tally);
       } else if (question.type === 'poll') {
-        if (!question.settings?.hideResultsWhileLive) {
-          const tally = await buildPollTally(eventCode, question);
-          await broadcastResults(eventCode, question.id, 'poll', undefined, tally);
-        }
+        const tally = await buildPollTally(eventCode, questionId, question);
+        await broadcastResults(eventCode, questionId, 'poll', undefined, tally);
       } else if (question.type === 'quiz') {
         const state = await buildQuizState(eventCode, question, false);
-        await broadcastResults(eventCode, question.id, 'quiz', undefined, undefined, state);
+        await broadcastResults(eventCode, questionId, 'quiz', undefined, undefined, state);
       }
 
-      return { status: 201, jsonBody: { submitted: true, id: doc.id } };
+      return { status: 201, jsonBody: doc };
     } catch (err: any) {
       context.error('submitResponse error', err);
       return { status: 500, jsonBody: { error: 'Internal error' } };
@@ -145,31 +111,37 @@ app.http('submitResponse', {
   },
 });
 
-/** GET /api/results/{eventCode}/{questionId} – get current results (polling fallback) */
+/** GET /api/responses/{eventCode}/{questionId} – get tallied results */
 app.http('getResults', {
   methods: ['GET'],
   authLevel: 'anonymous',
-  route: 'results/{eventCode}/{questionId}',
+  route: 'responses/{eventCode}/{questionId}',
   handler: async (req: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
     try {
       const eventCode = (req.params.eventCode || '').toUpperCase();
       const questionId = req.params.questionId || '';
 
-      const qContainer = questionsContainer();
-      const { resource: question } = await qContainer.item(questionId, eventCode).read<QuestionDoc>();
-      if (!question) return { status: 404, jsonBody: { error: 'Question not found' } };
+      const qTable = questionsTable();
+      let question: QuestionDoc;
+      try {
+        const entity = await qTable.getEntity(eventCode, questionId);
+        question = fromTableEntity<QuestionDoc>(entity, Q_JSON_FIELDS);
+      } catch (e: any) {
+        if (e.statusCode === 404) return { status: 404, jsonBody: { error: 'Question not found' } };
+        throw e;
+      }
+
+      let result: any = { question };
 
       if (question.type === 'wordcloud') {
-        const tally = await buildWordCloudTally(eventCode, questionId);
-        return { status: 200, jsonBody: { type: 'wordcloud', wordcloud: tally } };
+        result.wordCloudEntries = await buildWordCloudTally(eventCode, questionId);
       } else if (question.type === 'poll') {
-        const tally = await buildPollTally(eventCode, question);
-        return { status: 200, jsonBody: { type: 'poll', poll: tally } };
-      } else {
-        const reveal = req.query.get('reveal') === 'true';
-        const state = await buildQuizState(eventCode, question, reveal);
-        return { status: 200, jsonBody: { type: 'quiz', quiz: state } };
+        result.pollResults = await buildPollTally(eventCode, questionId, question);
+      } else if (question.type === 'quiz') {
+        result.quizState = await buildQuizState(eventCode, question, false);
       }
+
+      return { status: 200, jsonBody: result };
     } catch (err: any) {
       context.error('getResults error', err);
       return { status: 500, jsonBody: { error: 'Internal error' } };
@@ -177,44 +149,45 @@ app.http('getResults', {
   },
 });
 
-/** GET /api/export/{eventCode}/{questionId} – export responses as JSON */
+/** GET /api/responses/{eventCode}/{questionId}/export */
 app.http('exportResults', {
   methods: ['GET'],
   authLevel: 'anonymous',
-  route: 'export/{eventCode}/{questionId}',
+  route: 'responses/{eventCode}/{questionId}/export',
   handler: async (req: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
     try {
       const eventCode = (req.params.eventCode || '').toUpperCase();
       const questionId = req.params.questionId || '';
-      const format = req.query.get('format') || 'json';
+      const rKey = `${eventCode}_${questionId}`;
+      const rTable = responsesTable();
+      const responses = await queryEntities<ResponseDoc>(rTable, `PartitionKey eq '${rKey}'`, R_JSON_FIELDS);
 
-      const container = responsesContainer();
-      const { resources } = await container.items
-        .query<ResponseDoc>({
-          query: 'SELECT * FROM c WHERE c.eventCode = @ec AND c.questionId = @qid',
-          parameters: [
-            { name: '@ec', value: eventCode },
-            { name: '@qid', value: questionId },
-          ],
-        })
-        .fetchAll();
-
-      if (format === 'csv') {
-        const headers = 'id,eventCode,questionId,deviceId,nickname,answer,submittedAt,responseTimeMs';
-        const rows = resources.map((r) =>
-          [r.id, r.eventCode, r.questionId, r.deviceId, r.nickname || '', String(r.answer), r.submittedAt, r.responseTimeMs || ''].join(',')
-        );
-        return {
-          status: 200,
-          body: [headers, ...rows].join('\n'),
-          headers: {
-            'Content-Type': 'text/csv',
-            'Content-Disposition': `attachment; filename="${eventCode}_${questionId}.csv"`,
-          },
-        };
+      const qTable = questionsTable();
+      let question: QuestionDoc;
+      try {
+        const entity = await qTable.getEntity(eventCode, questionId);
+        question = fromTableEntity<QuestionDoc>(entity, Q_JSON_FIELDS);
+      } catch (e: any) {
+        if (e.statusCode === 404) return { status: 404, jsonBody: { error: 'Question not found' } };
+        throw e;
       }
 
-      return { status: 200, jsonBody: resources };
+      // Build CSV
+      let csv = 'deviceId,submittedAt,answer\n';
+
+      for (const r of responses) {
+        const answerStr = Array.isArray(r.answer) ? (r.answer as number[]).join(';') : String(r.answer || '');
+        csv += `${r.deviceId},${r.submittedAt},"${answerStr.replace(/"/g, '""')}"\n`;
+      }
+
+      return {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/csv',
+          'Content-Disposition': `attachment; filename="${eventCode}_${questionId}.csv"`,
+        },
+        body: csv,
+      };
     } catch (err: any) {
       context.error('exportResults error', err);
       return { status: 500, jsonBody: { error: 'Internal error' } };

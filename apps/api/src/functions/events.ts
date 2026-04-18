@@ -80,7 +80,7 @@ app.http('getEvent', {
       }
     } catch (err: any) {
       context.error('getEvent error', err);
-      return { status: 500, jsonBody: { error: 'Internal error' } };
+      return { status: 500, jsonBody: { error: 'Internal error', debug: err.message, stack: err.stack?.split('\n').slice(0, 3) } };
     }
   },
 });

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 
-const EVENT_CODE = 'CSU2026';
+const EVENT_CODE = 'CSUBELUX';
 
 export default function HomePage() {
   const [liveUrl, setLiveUrl] = useState('');
@@ -45,11 +45,11 @@ export default function HomePage() {
         <div className="s-hero-content s-reveal">
           <span className="s-hero-badge">
             <span className="s-hero-dot" />
-            April 2026
+            CSU Belux
           </span>
           <h1 className="s-hero-title">
-            CSU All Hands
-            <span className="s-hero-year">2026</span>
+            CSU ALL Hands
+            <span className="s-hero-year">Belux</span>
           </h1>
           <p className="s-hero-sub">Scroll to begin the experience</p>
           <div className="s-hero-chevron">
@@ -165,7 +165,7 @@ export default function HomePage() {
           </div>
 
           <p className="s-footer">
-            Powered by Microsoft &middot; CSU All Hands 2026
+            Powered by Microsoft &middot; CSU ALL Hands Belux
           </p>
         </div>
       </section>

@@ -3,8 +3,8 @@ import { Providers } from './providers';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Event Companion – CSU All Hands',
-  description: 'Live interactive experience for CSU All Hands events.',
+  title: 'CSU ALL Hands Belux',
+  description: 'Live interactive experience for CSU ALL Hands Belux events.',
 };
 
 export const viewport: Viewport = {

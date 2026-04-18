@@ -40,7 +40,7 @@ export const api = {
     request<any>(`/events/${eventCode}`, { method: 'DELETE' }),
 
   // Questions
-  listQuestions: (eventCode: string) => request<any[]>(`/questions/${eventCode}`),
+  listQuestions: (eventCode: string) => request<any[]>(`/questions?eventCode=${eventCode}`),
   createQuestion: (data: any) =>
     request<any>('/questions', { method: 'POST', body: JSON.stringify(data) }),
   launchQuestion: (questionId: string, eventCode: string) =>
@@ -72,14 +72,10 @@ export const api = {
   getResults: (eventCode: string, questionId: string, reveal?: boolean) =>
     request<any>(`/results/${eventCode}/${questionId}${reveal ? '?reveal=true' : ''}`),
 
-  // Export
-  exportResults: (eventCode: string, questionId: string, format: 'json' | 'csv' = 'json') =>
-    request<any>(`/export/${eventCode}/${questionId}?format=${format}`),
-
   // Seed
   seedTemplates: (eventCode: string) =>
     request<any>(`/seed/${eventCode}`, { method: 'POST' }),
 
   // Templates
-  getTemplates: () => request<any[]>('/templates'),
+  getTemplates: () => request<any[]>('/seed/templates'),
 };

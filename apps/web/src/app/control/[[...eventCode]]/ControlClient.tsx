@@ -186,7 +186,7 @@ export default function ControlClient() {
 
   const handleExport = async (q: QuestionDoc, format: 'json' | 'csv') => {
     try {
-      const data = await api.exportResults(eventCode, q.id, format);
+      const data = await api.getResults(eventCode, q.id);
       const blob = new Blob(
         [format === 'csv' ? data : JSON.stringify(data, null, 2)],
         { type: format === 'csv' ? 'text/csv' : 'application/json' }
